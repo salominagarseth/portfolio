@@ -377,6 +377,7 @@ function initFirebase() {
       <div id="price-badge" class="badge badge-stale">Prices: last saved</div>
       <button class="btn btn-sm" onclick="refreshPrices()">Refresh prices</button>
       <button class="btn btn-sm" onclick="debugPrice()" style="background:var(--surface2);color:var(--amber);border-color:var(--amber);"> Debug price</button>
+      <button class="btn btn-sm" onclick="debugUnavailableSymbols()">Unavailable symbols</button>
       <button class="btn btn-sm admin-only" style="display:none" id="header-import-btn" onclick="smartImport()">CSV import</button>
       <button class="btn btn-sm" onclick="exportCSV()">Export</button>
       <button class="btn btn-accent btn-sm admin-only" style="display:none" onclick="openModal('add')">+ Add holding</button>
@@ -1076,13 +1077,16 @@ function updateLastSaved(label) {
 // --- Prices ---
 // NSE-first price fetch. Uses a public read proxy because direct NSE calls are often blocked by browser CORS/bot rules.
 const _priceCache = {};
+let _lastPriceFailures = [];
 const SYMBOL_OVERRIDES = {
   CANARABANK: 'CANBK',
   BANKOF: 'BANKBARODA',
   EMSLIMITED: 'EMS',
   ETHOSLIMIT: 'ETHOSLTD',
   ZENTECHNOL: 'ZENTEC',
+  SHYAMMETAL: 'SHYAMMETL',
 };
+const KNOWN_NO_LTP_SYMBOLS = new Set(['KOTAKGOLD', 'L&TFH-RE', 'NA']);
 
 function normalizeSymbol(symbol) {
   const raw = String(symbol || '')
@@ -1255,6 +1259,22 @@ async function debugPrice() {
   setStatus('Debug OK - ' + symbol + ' LTP: ' + result.ltp + ' Day: ' + dayChg + '%', 'var(--accent)');
 }
 
+function debugUnavailableSymbols() {
+  if (!_lastPriceFailures.length) {
+    alert('No unavailable symbols from the last refresh.');
+    return;
+  }
+  const lines = _lastPriceFailures.map(x => `- ${x.symbol} (${x.reason})`);
+  alert(
+    'Unavailable symbols from last refresh (' + _lastPriceFailures.length + '):\n\n' +
+    lines.join('\n') +
+    '\n\nWhat to do:\n' +
+    '1) Retry refresh (some are temporary 429 rate limits)\n' +
+    '2) Fix/replace invalid symbols in holdings\n' +
+    '3) Rights/ETF symbols may not have quote-equity LTP'
+  );
+}
+
 async function refreshPrices() {
   Object.keys(_priceCache).forEach(k => delete _priceCache[k]);
   setStatus('Fetching NSE prices...');
@@ -1264,7 +1284,8 @@ async function refreshPrices() {
   const symbols = [...new Set(holdings.flatMap(h => symbolCandidatesForHolding(h)))];
   const prices = await fetchAllPrices(symbols);
 
-  let ok = 0, fail = 0;
+  let ok = 0, fail = 0, skipped = 0;
+  const failedRows = [];
   for (const h of holdings) {
     const candidates = symbolCandidatesForHolding(h);
     let p = null;
@@ -1288,9 +1309,16 @@ async function refreshPrices() {
       if (p.industry && p.industry !== 'Other') h.sector = p.industry;
       ok++;
     } else {
-      fail++;
+      const base = normalizeSymbol(h.symbol);
+      if (KNOWN_NO_LTP_SYMBOLS.has(base)) {
+        skipped++;
+      } else {
+        fail++;
+        failedRows.push({ symbol: base || String(h.symbol || '').trim(), reason: 'no quote' });
+      }
     }
   }
+  _lastPriceFailures = failedRows;
 
   const recat = applyNseSectorsToHoldings();
   if (ok > 0) {
@@ -1298,8 +1326,9 @@ async function refreshPrices() {
     document.getElementById('price-badge').innerHTML = '<div class="live-dot"></div> Live  ' + now;
     document.getElementById('price-badge').className = 'badge badge-live';
     const failMsg = fail ? ('  ' + fail + ' symbols unavailable') : '';
+    const skipMsg = skipped ? ('  ' + skipped + ' symbols skipped') : '';
     const sectorMsg = recat ? ('  ' + recat + ' sectors synced to NSE') : '';
-    setStatus(ok + ' NSE prices updated' + failMsg + sectorMsg, 'var(--accent)');
+    setStatus(ok + ' NSE prices updated' + failMsg + skipMsg + sectorMsg, 'var(--accent)');
     await save();
   } else {
     document.getElementById('price-badge').textContent = 'Prices: last saved';
