@@ -240,7 +240,7 @@ function initFirebase() {
   .sector-ok { font-size:11px; padding:2px 6px; border-radius:4px; background:var(--accent-dim);
     color:var(--accent); border:1px solid var(--accent-border); cursor:pointer; font-family:var(--font); }
   th.sort-asc .sort-icon::after  { content:'a2'; opacity:1; color:var(--accent); }
-  th.sort-desc .sort-icon::after { content:'a14'; opacity:1; color:var(--accent); }
+  th.sort-desc .sort-icon::after { content:'Rs.4'; opacity:1; color:var(--accent); }
   th:not(.sort-asc):not(.sort-desc) .sort-icon::after { content:'a...'; }
   .clear-btn { font-size:11px; color:var(--muted); background:none; border:none; cursor:pointer; padding:4px 6px; border-radius:4px; white-space:nowrap; }
   .clear-btn:hover { color:var(--text); background:var(--surface2); }
@@ -628,7 +628,7 @@ function initFirebase() {
         <div class="current-badge" id="sell-qty-hint"></div>
       </div>
       <div class="form-row">
-        <label>Sell price per share (a1)</label>
+        <label>Sell price per share (Rs.)</label>
         <input type="number" id="sell-price" placeholder="e.g. 2800" oninput="updateSellPreview()" />
       </div>
       <div class="realised-box" id="sell-preview" style="display:none;">
@@ -647,7 +647,7 @@ function initFirebase() {
       <div class="form-row"><label>Symbol</label><input type="text" id="edit-symbol" /></div>
       <div class="form-row"><label>Company name</label><input type="text" id="edit-name" /></div>
       <div class="form-row"><label>Quantity</label><input type="number" id="edit-qty" oninput="updateEditPreview()" /></div>
-      <div class="form-row"><label>Avg buy price (a1)</label><input type="number" id="edit-cost" oninput="updateEditPreview()" /></div>
+      <div class="form-row"><label>Avg buy price (Rs.)</label><input type="number" id="edit-cost" oninput="updateEditPreview()" /></div>
       <div class="form-row"><label>Sector</label>
         <select id="edit-sector-sel">
           <option>Energy</option><option>IT</option><option>Banking</option><option>FMCG</option>
@@ -759,7 +759,7 @@ function initFirebase() {
         </select>
     </div>
     <div class="form-row"><label>Quantity</label><input type="number" id="f-qty" placeholder="10" /></div>
-    <div class="form-row"><label>Avg buy price (a1)</label><input type="number" id="f-cost" placeholder="2500" /></div>
+    <div class="form-row"><label>Avg buy price (Rs.)</label><input type="number" id="f-cost" placeholder="2500" /></div>
     <div class="modal-btns">
       <button class="btn" onclick="closeModals()">Cancel</button>
       <button class="btn btn-accent" onclick="addHolding()">Add &amp; fetch price</button>
@@ -962,7 +962,7 @@ async function save() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings));
       localStorage.setItem(META_KEY, JSON.stringify({ lastSaved: new Date().toISOString(), count: holdings.length }));
       showSavePill();
-      updateLastSaved('Firebase A ' + new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}));
+      updateLastSaved('Firebase - ' + new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}));
     } else {
       setStatus('Firebase save failed a check your config.', 'var(--red)');
     }
@@ -991,7 +991,7 @@ async function load() {
       holdings = data;
       applyNseSectorsToHoldings();
       renderAll();
-      setStatus(data.length + ' holdings A live', 'var(--accent)');
+      setStatus(data.length + ' holdings - live', 'var(--accent)');
     });
     // Immediate fetch
     const data = await fb.load();
@@ -999,7 +999,7 @@ async function load() {
       holdings = data;
       applyNseSectorsToHoldings();
       if (!data.length) {
-        setStatus('Connected A No holdings yet a click a CSV import to upload your files.');
+        setStatus('Connected - No holdings yet a click CSV import to upload your files.');
       } else {
         setStatus('Loaded ' + data.length + ' holdings from Firebase. Click a Refresh for live prices.', 'var(--accent)');
       }
@@ -1009,10 +1009,10 @@ async function load() {
       if (raw) {
         holdings = JSON.parse(raw);
         applyNseSectorsToHoldings();
-        setStatus('Showing cached data A Firebase temporarily unavailable.');
+        setStatus('Showing cached data - Firebase temporarily unavailable.');
       } else {
         loadDefaults();
-        setStatus('Could not connect to Firebase a showing sample data.');
+        setStatus('Could not connect to Firebase - showing sample data.');
       }
     }
     renderAll();
@@ -1029,7 +1029,7 @@ async function load() {
         setStatus(holdings.length + ' holdings loaded.');
       } else {
         loadDefaults();
-        setStatus('No saved data a add your holdings to get started.');
+        setStatus('No saved data - add your holdings to get started.');
       }
     } catch(e) { loadDefaults(); }
     renderAll();
@@ -1237,7 +1237,7 @@ async function refreshPrices() {
 }
 
 // --- Render ---
-function fmt(n) { return 'a1' + Math.round(n).toLocaleString('en-IN'); }
+function fmt(n) { return 'Rs.' + Math.round(n).toLocaleString('en-IN'); }
 function setStatus(msg, clr) {
   const el = document.getElementById('status-text');
   el.textContent = msg;
@@ -1419,8 +1419,8 @@ function renderTable() {
     const idx = holdings.indexOf(h);
     const invested = h.qty * h.cost;
     const currVal  = h.qty * h.ltp;
-    const w52H = h.w52High ? fmt(h.w52High) : 'a';
-    const w52L = h.w52Low  ? fmt(h.w52Low)  : 'a';
+    const w52H = h.w52High ? fmt(h.w52High) : '-';
+    const w52L = h.w52Low  ? fmt(h.w52Low)  : '-';
     const near52H = h.w52High && h.ltp >= h.w52High * 0.95 ? ' style="color:var(--accent);font-weight:600;"' : '';
     const near52L = h.w52Low  && h.ltp <= h.w52Low  * 1.05 ? ' style="color:var(--red);font-weight:600;"'   : '';
     return `<tr class="tr-clickable" onclick="openDetail(${idx})">
@@ -1460,7 +1460,7 @@ function renderAllocations() {
     return `<div class="alloc-row">
       <div class="alloc-meta">
         <span class="alloc-name">${k} <span style="font-size:11px;color:var(--muted);font-weight:400;">${count} stock${count !== 1 ? 's' : ''}</span></span>
-        <span class="alloc-pct">${p}% A ${fmt(v)}</span>
+        <span class="alloc-pct">${p}% - ${fmt(v)}</span>
       </div>
       <div class="bar-bg"><div class="bar-fill" style="width:${p}%;background:${COLORS_ACC[k] || '#888'};"></div></div>
     </div>`;
@@ -1515,14 +1515,14 @@ async function addHolding() {
   const cost = parseFloat(document.getElementById('f-cost').value);
   if (!sym || !qty || !cost) { alert('Symbol, quantity and buy price are required.'); return; }
   closeModals();
-  setStatus('Fetching live price for ' + sym + 'a');
+  setStatus('Fetching live price for ' + sym + '-');
   const p = await fetchPrice(sym);
   const ltp = p?.ltp || cost;
   const dayChg = p?.prev ? ((ltp - p.prev) / p.prev * 100) : 0;
   const mappedSector = nseSectorForSymbol(sym);
   holdings.push({ symbol: sym, name: name || sym, sector: mappedSector === 'Other' ? sector : mappedSector, account, qty, cost, ltp, dayChg });
   save();
-  setStatus(p?.ltp ? 'Added ' + sym + ' A live price ' + fmt(ltp) : 'Added ' + sym + ' (price unavailable, using buy price)', p?.ltp ? 'var(--accent)' : undefined);
+  setStatus(p?.ltp ? 'Added ' + sym + ' - live price ' + fmt(ltp) : 'Added ' + sym + ' (price unavailable, using buy price)', p?.ltp ? 'var(--accent)' : undefined);
   ['f-symbol', 'f-name', 'f-qty', 'f-cost'].forEach(id => document.getElementById(id).value = '');
   renderAll();
 }
@@ -1728,7 +1728,7 @@ function importCSV() {
   document.getElementById('csv-unknown').style.display = 'none';
   document.getElementById('csv-file-input').value = '';
   save();
-  setStatus('Replaced ' + removedCount + ' old ' + account + ' holdings a imported ' + added + ' fresh' + (skipped ? ' A ' + skipped + ' skipped' : '') + '. Click a Refresh for live prices.', 'var(--accent)');
+  setStatus('Replaced ' + removedCount + ' old ' + account + ' holdings imported ' + added + ' fresh' + (skipped ? ' - ' + skipped + ' skipped' : '') + '. Click a Refresh for live prices.', 'var(--accent)');
   renderAll();
 }
 
@@ -1736,7 +1736,7 @@ function exportCSV() {
   const rows = [['Symbol','Name','Sector','Account','Qty','Avg Cost','LTP','P&L']];
   holdings.forEach(h => rows.push([h.symbol, h.name, h.sector, h.account, h.qty, h.cost.toFixed(2), h.ltp.toFixed(2), ((h.ltp - h.cost) * h.qty).toFixed(2)]));
   const csv = rows.map(r => r.join(',')).join('\n');
-  const a = document.createElement('a');
+  const a = document.createElement('-');
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
   a.download = 'portfolio_' + new Date().toISOString().slice(0, 10) + '.csv';
   a.click();
@@ -1758,7 +1758,7 @@ function renderMovers(type) {
     .sort((a, b) => type === 'gain' ? b.dayChg - a.dayChg : a.dayChg - b.dayChg)
     .slice(0, 6);
   if (!sorted.length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:13px;">No data yet a click a Refresh prices first.</div>';
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px;">No data yet - click Refresh prices first.</div>';
     return;
   }
   el.innerHTML = sorted.map(h => {
@@ -1815,7 +1815,7 @@ function renderInsights() {
   insights.push({ icon: 'Y', text: `${holdings.length} stocks across <b>${accts.size}</b> accounts and <b>${sectors}</b> sectors.`, label: 'Diversification' });
 
   // Overall P&L colour
-  insights.push({ icon: pnl >= 0 ? 'a...' : 'Y ', text: `Portfolio is <b class="${pnl >= 0 ? 'pos' : 'neg'}">${pnl >= 0 ? 'up' : 'down'} ${fmt(Math.abs(pnl))} (${((pnl/inv)*100).toFixed(2)}%)</b> overall.`, label: 'Overall return' });
+  insights.push({ icon: pnl >= 0 ? 'POS' : 'NEG', text: `Portfolio is <b class="${pnl >= 0 ? 'pos' : 'neg'}">${pnl >= 0 ? 'up' : 'down'} ${fmt(Math.abs(pnl))} (${((pnl/inv)*100).toFixed(2)}%)</b> overall.`, label: 'Overall return' });
 
   el.innerHTML = insights.map(i => `
     <div class="insight-item">
@@ -1918,7 +1918,7 @@ async function loadNews(h) {
       </div>`;
     }).join('');
   } catch(e) {
-    el.innerHTML = `<div style="color:var(--muted);font-size:13px;">Could not load news a check internet connection.<br><a href="https://www.google.com/search?q=${encodeURIComponent(h.symbol+' NSE stock news')}" target="_blank" style="color:var(--accent);">Search Google News a</a></div>`;
+    el.innerHTML = `<div style="color:var(--muted);font-size:13px;">Could not load news - check internet connection.<br><a href="https://www.google.com/search?q=${encodeURIComponent(h.symbol+' NSE stock news')}" target="_blank" style="color:var(--accent);">Search Google News a</a></div>`;
   }
 }
 
@@ -1951,7 +1951,7 @@ async function loadPeers(h) {
     const barW = Math.min(100, (Math.abs(r.chg) / maxAbs) * 100);
     const barColor = r.chg >= 0 ? '#6ee7b7' : '#f87171';
     return `<div class="peer-row">
-      <div class="peer-sym" style="${isThis ? 'color:var(--accent);' : ''}">${r.sym}${isThis ? ' a' : ''}</div>
+      <div class="peer-sym" style="${isThis ? 'color:var(--accent);' : ''}">${r.sym}${isThis ? ' (You)' : ''}</div>
       <div class="peer-bar-wrap">
         <div class="peer-bar-bg"><div class="peer-bar-fill" style="width:${barW}%;background:${barColor};"></div></div>
       </div>
@@ -2030,8 +2030,8 @@ function openEditModal(idx) {
   if (!requireAdmin()) return;
   editIdx = idx;
   const h = holdings[idx];
-  document.getElementById('edit-modal-title').textContent = 'Edit A ' + h.symbol;
-  document.getElementById('edit-stock-summary').textContent = h.qty + ' shares A avg a1' + h.cost.toFixed(2) + ' A LTP a1' + h.ltp.toFixed(2);
+  document.getElementById('edit-modal-title').textContent = 'Edit - ' + h.symbol;
+  document.getElementById('edit-stock-summary').textContent = h.qty + ' shares - avg Rs.' + h.cost.toFixed(2) + ' - LTP Rs.' + h.ltp.toFixed(2);
   document.getElementById('sell-qty').value = '';
   document.getElementById('sell-price').value = h.ltp.toFixed(2);
   document.getElementById('sell-qty-hint').textContent = 'You hold ' + h.qty + ' shares';
@@ -2064,7 +2064,7 @@ function updateSellPreview() {
   const remaining = h.qty - qty;
   document.getElementById('sell-pnl-preview').textContent = (realisedPnl >= 0 ? '+' : '') + fmt(realisedPnl);
   document.getElementById('sell-pnl-preview').className = 'val ' + (realisedPnl >= 0 ? 'pos' : 'neg');
-  document.getElementById('sell-remaining-preview').textContent = remaining > 0 ? remaining + ' shares remain at avg a1' + h.cost.toFixed(2) : 'This will close your entire position';
+  document.getElementById('sell-remaining-preview').textContent = remaining > 0 ? remaining + ' shares remain at avg Rs.' + h.cost.toFixed(2) : 'This will close your entire position';
   preview.style.display = 'block';
 }
 
@@ -2086,7 +2086,7 @@ function confirmSell() {
   }
   closeModals();
   save();
-  setStatus(h.symbol + ': Sold ' + qty + ' @ a1' + price.toFixed(2) + ' A Realised P&L: ' + (realisedPnl >= 0 ? '+' : '') + fmt(realisedPnl), realisedPnl >= 0 ? 'var(--accent)' : 'var(--red)');
+  setStatus(h.symbol + ': Sold ' + qty + ' @ Rs.' + price.toFixed(2) + ' - Realised P&L: ' + (realisedPnl >= 0 ? '+' : '') + fmt(realisedPnl), realisedPnl >= 0 ? 'var(--accent)' : 'var(--red)');
   renderAll();
 }
 
@@ -2134,8 +2134,8 @@ function switchTab(tab, el) {
   // Update header import button label
   const importBtn = document.getElementById('header-import-btn');
   if (importBtn) {
-    if (tab === 'mf') { importBtn.textContent = 'a Import MF'; importBtn.style.display = isAdmin ? '' : 'none'; }
-    else if (tab === 'stocks') { importBtn.textContent = 'a CSV import'; importBtn.style.display = isAdmin ? '' : 'none'; }
+    if (tab === 'mf') { importBtn.textContent = 'Import MF'; importBtn.style.display = isAdmin ? '' : 'none'; }
+    else if (tab === 'stocks') { importBtn.textContent = 'CSV import'; importBtn.style.display = isAdmin ? '' : 'none'; }
     else { importBtn.style.display = 'none'; }
   }
   if (tab === 'mf') { setTimeout(renderMFAll, 0); }
@@ -2247,23 +2247,23 @@ function renderMFTable() {
 
   const tbody = document.getElementById('mf-body');
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No funds yet a click a Import MF to upload your files.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No funds yet a click Import MF to upload your files.</td></tr>';
     return;
   }
   tbody.innerHTML = list.map(h => {
     const ret = parseFloat(h.returns||0);
     const xi  = h.xirr ? parseFloat(h.xirr) : null;
-    const retPct = h.invested ? ((ret/parseFloat(h.invested))*100).toFixed(2) : 'a';
+    const retPct = h.invested ? ((ret/parseFloat(h.invested))*100).toFixed(2) : '-';
     return `<tr>
       <td><div class="stock-sym" style="font-size:12px;max-width:240px;white-space:normal;line-height:1.3;">${h.name}</div>
           <div class="stock-name">${h.amc||''}</div></td>
       <td><span class="mf-tag mf-tag-${h.account.toLowerCase()}">${h.account}</span></td>
-      <td><span class="cat-pill">${h.subcat||h.category||'a'}</span></td>
+      <td><span class="cat-pill">${h.subcat||h.category||'-'}</span></td>
       <td style="font-family:var(--mono);font-size:12px;">${parseFloat(h.units||0).toFixed(3)}</td>
       <td>${fmt(parseFloat(h.invested||0))}</td>
       <td style="font-weight:600;">${fmt(parseFloat(h.current||0))}</td>
       <td class="${ret>=0?'pnl-up':'pnl-down'}">${ret>=0?'+':''}${fmt(ret)} <span style="font-size:11px;opacity:0.7;">(${ret>=0?'+':''}${retPct}%)</span></td>
-      <td>${xi!==null ? `<span class="xirr-pill ${xi>=0?'xirr-pos':'xirr-neg'}">${xi>=0?'+':''}${xi.toFixed(2)}%</span>` : 'a'}</td>
+      <td>${xi!==null ? `<span class="xirr-pill ${xi>=0?'xirr-pos':'xirr-neg'}">${xi>=0?'+':''}${xi.toFixed(2)}%</span>` : '-'}</td>
     </tr>`;
   }).join('');
 }
@@ -2285,7 +2285,7 @@ function renderMFAllocations() {
     const p = ((v/total)*100).toFixed(1);
     const count = mfHoldings.filter(h=>h.account===k).length;
     return `<div class="alloc-row">
-      <div class="alloc-meta"><span class="alloc-name">${k==='SN'?'Groww - SN':k==='MJ'?'Groww - MJ':'Groww - SJ'} <span style="font-size:11px;color:var(--muted);font-weight:400;">${count} fund${count!==1?'s':''}</span></span><span class="alloc-pct">${p}% A ${fmt(v)}</span></div>
+      <div class="alloc-meta"><span class="alloc-name">${k==='SN'?'Groww - SN':k==='MJ'?'Groww - MJ':'Groww - SJ'} <span style="font-size:11px;color:var(--muted);font-weight:400;">${count} fund${count!==1?'s':''}</span></span><span class="alloc-pct">${p}% - ${fmt(v)}</span></div>
       <div class="bar-bg"><div class="bar-fill" style="width:${p}%;background:${acctColors[k]||'#888'};"></div></div>
     </div>`;
   }).join('')||'<div style="color:var(--muted);font-size:13px;">No data</div>';
@@ -2400,7 +2400,7 @@ function importMF() {
   document.getElementById('mf-detected').style.display='none';
   document.getElementById('mf-unknown').style.display='none';
   saveMF();
-  setStatus(`Replaced ${removed} old MF holdings for ${account} a imported ${added} funds.`, 'var(--accent)');
+  setStatus(`Replaced ${removed} old MF holdings for ${account} imported ${added} funds.`, 'var(--accent)');
   renderMFAll();
 }
 
@@ -2443,7 +2443,7 @@ async function renderAnalysisTab() {
   const topLosers  = [...holdings].sort((a,b)=>(a.ltp-a.cost)*a.qty - (b.ltp-b.cost)*b.qty).slice(0,3);
 
   const fmtPct = (n) => (n>=0?'+':'')+n.toFixed(2)+'%';
-  const pctOf  = (v) => totalCur ? ((v/totalCur)*100).toFixed(1)+'%' : 'a';
+  const pctOf  = (v) => totalCur ? ((v/totalCur)*100).toFixed(1)+'%' : '-';
 
   el.innerHTML = `
     <div class="metrics" style="margin-bottom:20px;">
@@ -2466,7 +2466,7 @@ async function renderAnalysisTab() {
           ['Mutual Funds', mfCur, '#60a5fa'],
         ].map(([label, val, color]) => {
           const p = totalCur ? ((val/totalCur)*100).toFixed(1) : 0;
-          return `<div class="alloc-row"><div class="alloc-meta"><span class="alloc-name">${label}</span><span class="alloc-pct">${p}% A ${fmt(val)}</span></div>
+          return `<div class="alloc-row"><div class="alloc-meta"><span class="alloc-name">${label}</span><span class="alloc-pct">${p}% - ${fmt(val)}</span></div>
           <div class="bar-bg"><div class="bar-fill" style="width:${p}%;background:${color};"></div></div></div>`;
         }).join('')}
         <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
@@ -2486,7 +2486,7 @@ async function renderAnalysisTab() {
         ${topSectors.map(([sec, val], i) => {
           const p = stockCur ? ((val/stockCur)*100).toFixed(1) : 0;
           const colors = ['#6ee7b7','#60a5fa','#f472b6','#fb923c','#a78bfa','#fbbf24'];
-          return `<div class="alloc-row"><div class="alloc-meta"><span class="alloc-name">${sec}</span><span class="alloc-pct">${p}% A ${fmt(val)}</span></div>
+          return `<div class="alloc-row"><div class="alloc-meta"><span class="alloc-name">${sec}</span><span class="alloc-pct">${p}% - ${fmt(val)}</span></div>
           <div class="bar-bg"><div class="bar-fill" style="width:${p}%;background:${colors[i%colors.length]};"></div></div></div>`;
         }).join('')}
       </div>
@@ -2498,7 +2498,7 @@ async function renderAnalysisTab() {
         ${topStocks.map(h => {
           const val = h.qty*h.ltp, pnl = (h.ltp-h.cost)*h.qty, pnlPct = ((h.ltp-h.cost)/h.cost*100).toFixed(1);
           return `<div class="gainer-row">
-            <div><div class="gainer-sym">${h.symbol}</div><div class="gainer-name">${h.name} A ${pctOf(val)}</div></div>
+            <div><div class="gainer-sym">${h.symbol}</div><div class="gainer-name">${h.name} - ${pctOf(val)}</div></div>
             <div style="text-align:right;"><div style="font-size:13px;font-weight:600;">${fmt(val)}</div>
             <div class="gainer-val ${pnl>=0?'pos':'neg'}" style="font-size:12px;">${pnl>=0?'+':''}${pnlPct}%</div></div>
           </div>`;
@@ -2512,7 +2512,7 @@ async function renderAnalysisTab() {
           const retPct = inv ? ((ret/inv)*100).toFixed(1) : '0.0';
           return `<div class="gainer-row">
             <div style="max-width:180px;"><div class="gainer-sym" style="font-size:12px;white-space:normal;line-height:1.3;">${h.name}</div>
-            <div class="gainer-name">${h.account} A ${pctOf(parseFloat(h.current))}</div></div>
+            <div class="gainer-name">${h.account} - ${pctOf(parseFloat(h.current))}</div></div>
             <div style="text-align:right;"><div style="font-size:13px;font-weight:600;">${fmt(parseFloat(h.current))}</div>
             <div class="gainer-val ${ret>=0?'pos':'neg'}" style="font-size:12px;">${ret>=0?'+':''}${retPct}%</div></div>
           </div>`;
