@@ -1201,12 +1201,13 @@ async function refreshPrices() {
   document.getElementById('price-badge').textContent = 'Fetching...';
   document.getElementById('price-badge').className = 'badge badge-stale';
 
-  const symbols = [...new Set(holdings.map(h => h.symbol))];
+  const symbols = [...new Set(holdings.map(h => String(h.symbol || '').toUpperCase().trim()))];
   const prices = await fetchAllPrices(symbols);
 
   let ok = 0, fail = 0;
   for (const h of holdings) {
-    const p = prices[h.symbol];
+    const key = String(h.symbol || '').toUpperCase().trim();
+    const p = prices[key];
     if (p && p.ltp) {
       h.ltp = p.ltp;
       h.dayChg = p.dayChgPct ?? (p.prev ? ((p.ltp - p.prev) / p.prev * 100) : 0);
