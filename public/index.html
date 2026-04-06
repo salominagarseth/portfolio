@@ -1086,6 +1086,31 @@ function normalizeSymbol(symbol) {
     .replace(/[^A-Z0-9&-]/g, '');
 }
 
+function symbolCandidatesForHolding(h) {
+  const out = [];
+  const push = (s) => {
+    const n = normalizeSymbol(s);
+    if (n && !out.includes(n)) out.push(n);
+  };
+
+  const base = normalizeSymbol(h?.symbol);
+  push(base);
+  push(base.replace(/-EQ$/g, ''));
+  push(base.replace(/-BE$/g, ''));
+  push(base.replace(/EQ$/g, ''));
+  push(base.replace(/BE$/g, ''));
+
+  const name = String(h?.name || '').toUpperCase();
+  const words = name.replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+  if (words.length) {
+    push(words[0]);
+    push(words.slice(0, 2).join(''));
+    push(words.slice(0, 3).join(''));
+  }
+
+  return out;
+}
+
 function toNum(v) {
   if (v === null || v === undefined || v === '') return null;
   const n = parseFloat(String(v).replace(/,/g, '').trim());
@@ -1214,15 +1239,26 @@ async function refreshPrices() {
   document.getElementById('price-badge').textContent = 'Fetching...';
   document.getElementById('price-badge').className = 'badge badge-stale';
 
-  const symbols = [...new Set(holdings.map(h => normalizeSymbol(h.symbol)))];
+  const symbols = [...new Set(holdings.flatMap(h => symbolCandidatesForHolding(h)))];
   const prices = await fetchAllPrices(symbols);
 
   let ok = 0, fail = 0;
   for (const h of holdings) {
-    const key = normalizeSymbol(h.symbol);
-    let p = prices[key];
-    if (!p && key) p = await fetchOnePrice(key);
+    const candidates = symbolCandidatesForHolding(h);
+    let p = null;
+    let used = '';
+    for (const c of candidates) {
+      p = prices[c];
+      if (p && p.ltp) { used = c; break; }
+    }
+    if (!p) {
+      for (const c of candidates) {
+        p = await fetchOnePrice(c);
+        if (p && p.ltp) { used = c; break; }
+      }
+    }
     if (p && p.ltp) {
+      if (used && used !== normalizeSymbol(h.symbol)) h.symbol = used;
       h.ltp = p.ltp;
       h.dayChg = p.dayChgPct ?? (p.prev ? ((p.ltp - p.prev) / p.prev * 100) : 0);
       if (p.w52High) h.w52High = p.w52High;
