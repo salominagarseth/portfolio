@@ -239,9 +239,9 @@ function initFirebase() {
     padding:3px 8px; outline:none; width:110px; }
   .sector-ok { font-size:11px; padding:2px 6px; border-radius:4px; background:var(--accent-dim);
     color:var(--accent); border:1px solid var(--accent-border); cursor:pointer; font-family:var(--font); }
-  th.sort-asc .sort-icon::after  { content:'a2'; opacity:1; color:var(--accent); }
-  th.sort-desc .sort-icon::after { content:'Rs.4'; opacity:1; color:var(--accent); }
-  th:not(.sort-asc):not(.sort-desc) .sort-icon::after { content:'a...'; }
+  th.sort-asc .sort-icon::after  { content:'^'; opacity:1; color:var(--accent); }
+  th.sort-desc .sort-icon::after { content:'v'; opacity:1; color:var(--accent); }
+  th:not(.sort-asc):not(.sort-desc) .sort-icon::after { content:'<>'; }
   .clear-btn { font-size:11px; color:var(--muted); background:none; border:none; cursor:pointer; padding:4px 6px; border-radius:4px; white-space:nowrap; }
   .clear-btn:hover { color:var(--text); background:var(--surface2); }
   .results-count { font-size:11px; color:var(--muted); white-space:nowrap; }
@@ -628,7 +628,7 @@ function initFirebase() {
         <div class="current-badge" id="sell-qty-hint"></div>
       </div>
       <div class="form-row">
-        <label>Sell price per share (Rs.)</label>
+        <label>Sell price per share</label>
         <input type="number" id="sell-price" placeholder="e.g. 2800" oninput="updateSellPreview()" />
       </div>
       <div class="realised-box" id="sell-preview" style="display:none;">
@@ -647,7 +647,7 @@ function initFirebase() {
       <div class="form-row"><label>Symbol</label><input type="text" id="edit-symbol" /></div>
       <div class="form-row"><label>Company name</label><input type="text" id="edit-name" /></div>
       <div class="form-row"><label>Quantity</label><input type="number" id="edit-qty" oninput="updateEditPreview()" /></div>
-      <div class="form-row"><label>Avg buy price (Rs.)</label><input type="number" id="edit-cost" oninput="updateEditPreview()" /></div>
+      <div class="form-row"><label>Avg buy price</label><input type="number" id="edit-cost" oninput="updateEditPreview()" /></div>
       <div class="form-row"><label>Sector</label>
         <select id="edit-sector-sel">
           <option>Energy</option><option>IT</option><option>Banking</option><option>FMCG</option>
@@ -759,7 +759,7 @@ function initFirebase() {
         </select>
     </div>
     <div class="form-row"><label>Quantity</label><input type="number" id="f-qty" placeholder="10" /></div>
-    <div class="form-row"><label>Avg buy price (Rs.)</label><input type="number" id="f-cost" placeholder="2500" /></div>
+    <div class="form-row"><label>Avg buy price</label><input type="number" id="f-cost" placeholder="2500" /></div>
     <div class="modal-btns">
       <button class="btn" onclick="closeModals()">Cancel</button>
       <button class="btn btn-accent" onclick="addHolding()">Add &amp; fetch price</button>
@@ -1187,12 +1187,12 @@ async function debugPrice() {
   alert(
     'SUCCESS\n\n' +
     'Symbol: ' + symbol + '\n' +
-    'LTP: Rs.' + result.ltp + '\n' +
-    'Prev close: Rs.' + (result.prev ?? 'N/A') + '\n' +
+    'LTP: ' + result.ltp + '\n' +
+    'Prev close: ' + (result.prev ?? 'N/A') + '\n' +
     'Day change: ' + dayChg + '%' +
     (result.industry ? ('\nIndustry: ' + result.industry) : '')
   );
-  setStatus('Debug OK - ' + symbol + ' LTP: Rs.' + result.ltp + ' Day: ' + dayChg + '%', 'var(--accent)');
+  setStatus('Debug OK - ' + symbol + ' LTP: ' + result.ltp + ' Day: ' + dayChg + '%', 'var(--accent)');
 }
 
 async function refreshPrices() {
@@ -1237,7 +1237,7 @@ async function refreshPrices() {
 }
 
 // --- Render ---
-function fmt(n) { return 'Rs.' + Math.round(n).toLocaleString('en-IN'); }
+function fmt(n) { return Math.round(n).toLocaleString('en-IN'); }
 function setStatus(msg, clr) {
   const el = document.getElementById('status-text');
   el.textContent = msg;
@@ -2031,7 +2031,7 @@ function openEditModal(idx) {
   editIdx = idx;
   const h = holdings[idx];
   document.getElementById('edit-modal-title').textContent = 'Edit - ' + h.symbol;
-  document.getElementById('edit-stock-summary').textContent = h.qty + ' shares - avg Rs.' + h.cost.toFixed(2) + ' - LTP Rs.' + h.ltp.toFixed(2);
+  document.getElementById('edit-stock-summary').textContent = h.qty + ' shares - avg ' + h.cost.toFixed(2) + ' - LTP ' + h.ltp.toFixed(2);
   document.getElementById('sell-qty').value = '';
   document.getElementById('sell-price').value = h.ltp.toFixed(2);
   document.getElementById('sell-qty-hint').textContent = 'You hold ' + h.qty + ' shares';
@@ -2064,7 +2064,7 @@ function updateSellPreview() {
   const remaining = h.qty - qty;
   document.getElementById('sell-pnl-preview').textContent = (realisedPnl >= 0 ? '+' : '') + fmt(realisedPnl);
   document.getElementById('sell-pnl-preview').className = 'val ' + (realisedPnl >= 0 ? 'pos' : 'neg');
-  document.getElementById('sell-remaining-preview').textContent = remaining > 0 ? remaining + ' shares remain at avg Rs.' + h.cost.toFixed(2) : 'This will close your entire position';
+  document.getElementById('sell-remaining-preview').textContent = remaining > 0 ? remaining + ' shares remain at avg ' + h.cost.toFixed(2) : 'This will close your entire position';
   preview.style.display = 'block';
 }
 
@@ -2086,7 +2086,7 @@ function confirmSell() {
   }
   closeModals();
   save();
-  setStatus(h.symbol + ': Sold ' + qty + ' @ Rs.' + price.toFixed(2) + ' - Realised P&L: ' + (realisedPnl >= 0 ? '+' : '') + fmt(realisedPnl), realisedPnl >= 0 ? 'var(--accent)' : 'var(--red)');
+  setStatus(h.symbol + ': Sold ' + qty + ' @ ' + price.toFixed(2) + ' - Realised P&L: ' + (realisedPnl >= 0 ? '+' : '') + fmt(realisedPnl), realisedPnl >= 0 ? 'var(--accent)' : 'var(--red)');
   renderAll();
 }
 
@@ -2589,8 +2589,8 @@ async function runPortfolioAI(force) {
   const prompt = `You are an Indian portfolio analyst. Give a concise, honest overview of this investor's portfolio.
 
 Portfolio summary:
-- Total value: Rs.${Math.round(totalCur).toLocaleString('en-IN')} | Invested: Rs.${Math.round(totalInv).toLocaleString('en-IN')} | P&L: Rs.${Math.round(totalPnl).toLocaleString('en-IN')} (${((totalPnl/totalInv)*100).toFixed(1)}%)
-- Stocks: ${stockPct}% of portfolio (Rs.${Math.round(stockCur).toLocaleString('en-IN')}) | MF: ${mfPct}% (Rs.${Math.round(mfCur).toLocaleString('en-IN')})
+- Total value: ${Math.round(totalCur).toLocaleString('en-IN')} | Invested: ${Math.round(totalInv).toLocaleString('en-IN')} | P&L: ${Math.round(totalPnl).toLocaleString('en-IN')} (${((totalPnl/totalInv)*100).toFixed(1)}%)
+- Stocks: ${stockPct}% of portfolio (${Math.round(stockCur).toLocaleString('en-IN')}) | MF: ${mfPct}% (${Math.round(mfCur).toLocaleString('en-IN')})
 - Total stocks: ${holdings.length} | Total MFs: ${mfHoldings.length}
 - Top sector exposure: ${topSecs || 'N/A'}
 - Top 5 stock positions: ${topStocks5 || 'N/A'}
