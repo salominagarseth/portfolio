@@ -1076,14 +1076,22 @@ function updateLastSaved(label) {
 // --- Prices ---
 // NSE-first price fetch. Uses a public read proxy because direct NSE calls are often blocked by browser CORS/bot rules.
 const _priceCache = {};
+const SYMBOL_OVERRIDES = {
+  CANARABANK: 'CANBK',
+  BANKOF: 'BANKBARODA',
+  EMSLIMITED: 'EMS',
+  ETHOSLIMIT: 'ETHOSLTD',
+  ZENTECHNOL: 'ZENTEC',
+};
 
 function normalizeSymbol(symbol) {
-  return String(symbol || '')
+  const raw = String(symbol || '')
     .toUpperCase()
     .trim()
     .replace(/\.NS$/g, '')
     .replace(/\s+/g, '')
     .replace(/[^A-Z0-9&-]/g, '');
+  return SYMBOL_OVERRIDES[raw] || raw;
 }
 
 function symbolCandidatesForHolding(h) {
@@ -1148,7 +1156,11 @@ function parseNseViaJinaText(text) {
 async function fetchFromNseProxy(symbol) {
   const url = `https://r.jina.ai/http://www.nseindia.com/api/quote-equity?symbol=${encodeURIComponent(symbol)}`;
   const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
-  if (!r.ok) throw new Error('NSE proxy HTTP ' + r.status);
+  if (!r.ok) {
+    const err = new Error('NSE proxy HTTP ' + r.status);
+    err.code = r.status;
+    throw err;
+  }
   const raw = await r.text();
   const payload = parseNseViaJinaText(raw);
   if (!payload) throw new Error('NSE proxy parse failed');
@@ -1185,13 +1197,21 @@ async function fetchOnePrice(symbol) {
   ];
 
   for (const fn of attempts) {
-    try {
-      const p = await fn();
-      if (p && p.ltp) {
-        _priceCache[sym] = p;
-        return p;
+    for (let tries = 0; tries < 3; tries++) {
+      try {
+        const p = await fn();
+        if (p && p.ltp) {
+          _priceCache[sym] = p;
+          return p;
+        }
+      } catch (e) {
+        if (e?.code === 429 && tries < 2) {
+          await new Promise(r => setTimeout(r, 450 * (tries + 1)));
+          continue;
+        }
       }
-    } catch (_) {}
+      break;
+    }
   }
   return null;
 }
@@ -1204,6 +1224,8 @@ async function fetchAllPrices(symbols) {
     setStatus(`Fetching NSE prices... ${i + 1}/${uniq.length}`);
     const p = await fetchOnePrice(sym);
     if (p) results[sym] = p;
+    // Throttle to reduce NSE proxy rate limiting.
+    await new Promise(r => setTimeout(r, 120));
   }
   return results;
 }
