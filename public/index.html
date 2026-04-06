@@ -951,9 +951,11 @@ const ISIN_MAP = {
 let holdings = [];
 let currentFilter = 'all';
 let sortState = { col: null, dir: 1 }; // dir: 1=asc, -1=desc
+let _lastLocalMutationAt = 0;
 
 // --- Storage (localStorage) ---
 async function save() {
+  _lastLocalMutationAt = Date.now();
   const fb = window._firebase;
   if (fb?.isConfigured()) {
     const ok = await fb.save(holdings);
@@ -988,6 +990,8 @@ async function load() {
     setStatus('Connecting to Firebasea');
     // Subscribe to real-time updates a fires whenever data changes
     fb.subscribe((data) => {
+      // Avoid remote snapshot bounce-back immediately after local writes.
+      if (Date.now() - _lastLocalMutationAt < 8000) return;
       holdings = data;
       applyNseSectorsToHoldings();
       renderAll();
@@ -1073,6 +1077,15 @@ function updateLastSaved(label) {
 // NSE-first price fetch. Uses a public read proxy because direct NSE calls are often blocked by browser CORS/bot rules.
 const _priceCache = {};
 
+function normalizeSymbol(symbol) {
+  return String(symbol || '')
+    .toUpperCase()
+    .trim()
+    .replace(/\.NS$/g, '')
+    .replace(/\s+/g, '')
+    .replace(/[^A-Z0-9&-]/g, '');
+}
+
 function toNum(v) {
   if (v === null || v === undefined || v === '') return null;
   const n = parseFloat(String(v).replace(/,/g, '').trim());
@@ -1137,7 +1150,7 @@ async function fetchFromLegacyApi(symbol) {
 }
 
 async function fetchOnePrice(symbol) {
-  const sym = String(symbol || '').toUpperCase().trim();
+  const sym = normalizeSymbol(symbol);
   if (!sym) return null;
   if (_priceCache[sym]) return _priceCache[sym];
 
@@ -1159,7 +1172,7 @@ async function fetchOnePrice(symbol) {
 }
 
 async function fetchAllPrices(symbols) {
-  const uniq = [...new Set((symbols || []).map(s => String(s || '').toUpperCase().trim()).filter(Boolean))];
+  const uniq = [...new Set((symbols || []).map(s => normalizeSymbol(s)).filter(Boolean))];
   const results = {};
   for (let i = 0; i < uniq.length; i++) {
     const sym = uniq[i];
@@ -1201,13 +1214,14 @@ async function refreshPrices() {
   document.getElementById('price-badge').textContent = 'Fetching...';
   document.getElementById('price-badge').className = 'badge badge-stale';
 
-  const symbols = [...new Set(holdings.map(h => String(h.symbol || '').toUpperCase().trim()))];
+  const symbols = [...new Set(holdings.map(h => normalizeSymbol(h.symbol)))];
   const prices = await fetchAllPrices(symbols);
 
   let ok = 0, fail = 0;
   for (const h of holdings) {
-    const key = String(h.symbol || '').toUpperCase().trim();
-    const p = prices[key];
+    const key = normalizeSymbol(h.symbol);
+    let p = prices[key];
+    if (!p && key) p = await fetchOnePrice(key);
     if (p && p.ltp) {
       h.ltp = p.ltp;
       h.dayChg = p.dayChgPct ?? (p.prev ? ((p.ltp - p.prev) / p.prev * 100) : 0);
@@ -1228,7 +1242,7 @@ async function refreshPrices() {
     const failMsg = fail ? ('  ' + fail + ' symbols unavailable') : '';
     const sectorMsg = recat ? ('  ' + recat + ' sectors synced to NSE') : '';
     setStatus(ok + ' NSE prices updated' + failMsg + sectorMsg, 'var(--accent)');
-    save();
+    await save();
   } else {
     document.getElementById('price-badge').textContent = 'Prices: last saved';
     document.getElementById('price-badge').className = 'badge badge-stale';
