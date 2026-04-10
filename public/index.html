@@ -26,7 +26,9 @@ window._firebase = {
   adminPassword: () => window._ADMIN_PASSWORD,
   save: async () => false,
   load: async () => null,
-  subscribe: () => {}
+  subscribe: () => {},
+  saveAlertConfig: async () => false,
+  loadAlertConfig: async () => null
 };
 
 function initFirebase() {
@@ -68,6 +70,32 @@ function initFirebase() {
             try { callback(JSON.parse(snap.data().data)); } catch(e) {}
           }
         });
+      },
+
+      saveAlertConfig: async (cfg) => {
+        try {
+          await _db.collection('portfolio').doc('alert_config').set({
+            enabled: !!cfg?.enabled,
+            email: String(cfg?.email || '').trim(),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          return true;
+        } catch (e) {
+          console.error('Alert config save failed:', e);
+          return false;
+        }
+      },
+
+      loadAlertConfig: async () => {
+        try {
+          const snap = await _db.collection('portfolio').doc('alert_config').get();
+          if (!snap.exists) return null;
+          const d = snap.data() || {};
+          return { enabled: !!d.enabled, email: String(d.email || '').trim() };
+        } catch (e) {
+          console.error('Alert config load failed:', e);
+          return null;
+        }
       }
     };
     return true;
@@ -376,6 +404,7 @@ function initFirebase() {
     <div class="header-right">
       <div id="price-badge" class="badge badge-stale">Prices: last saved</div>
       <button class="btn btn-sm" onclick="refreshPrices()">Refresh prices</button>
+      <button class="btn btn-sm" onclick="openModal('alerts')">Alert settings</button>
       <button class="btn btn-sm" onclick="debugPrice()" style="background:var(--surface2);color:var(--amber);border-color:var(--amber);"> Debug price</button>
       <button class="btn btn-sm" onclick="debugUnavailableSymbols()">Unavailable symbols</button>
       <button class="btn btn-sm admin-only" style="display:none" id="header-import-btn" onclick="smartImport()">CSV import</button>
@@ -446,6 +475,8 @@ function initFirebase() {
               <th class="sortable" onclick="sortBy('ltp')">LTP<i class="sort-icon"></i></th>
               <th class="sortable" onclick="sortBy('value')">Curr value<i class="sort-icon"></i></th>
               <th class="sortable" onclick="sortBy('dayChg')">Day chg<i class="sort-icon"></i></th>
+              <th class="sortable" onclick="sortBy('call')">Call<i class="sort-icon"></i></th>
+              <th class="sortable" onclick="sortBy('target')">Target<i class="sort-icon"></i></th>
               <th class="sortable" onclick="sortBy('pnl')">Total P&L<i class="sort-icon"></i></th>
               <th class="sortable" onclick="sortBy('w52High')">52W High<i class="sort-icon"></i></th>
               <th class="sortable" onclick="sortBy('w52Low')">52W Low<i class="sort-icon"></i></th>
@@ -667,6 +698,14 @@ function initFirebase() {
           <option value="HDFC">HDFC Securities</option>
         </select>
       </div>
+      <div class="form-row"><label>Call</label>
+        <select id="edit-call-sel">
+          <option value="Hold">Hold</option>
+          <option value="Buy">Buy</option>
+          <option value="Sell">Sell</option>
+        </select>
+      </div>
+      <div class="form-row"><label>Target price</label><input type="number" id="edit-target" placeholder="Optional" /></div>
       <div class="modal-btns">
         <button class="btn" onclick="closeModals()">Cancel</button>
         <button class="btn btn-accent" onclick="confirmEdit()">Save changes</button>
@@ -761,6 +800,14 @@ function initFirebase() {
     </div>
     <div class="form-row"><label>Quantity</label><input type="number" id="f-qty" placeholder="10" /></div>
     <div class="form-row"><label>Avg buy price</label><input type="number" id="f-cost" placeholder="2500" /></div>
+    <div class="form-row"><label>Call</label>
+      <select id="f-call">
+        <option value="Hold">Hold</option>
+        <option value="Buy">Buy</option>
+        <option value="Sell">Sell</option>
+      </select>
+    </div>
+    <div class="form-row"><label>Target price</label><input type="number" id="f-target" placeholder="Optional" /></div>
     <div class="modal-btns">
       <button class="btn" onclick="closeModals()">Cancel</button>
       <button class="btn btn-accent" onclick="addHolding()">Add &amp; fetch price</button>
@@ -815,6 +862,30 @@ function initFirebase() {
   </div>
 </div>
 
+<!-- Alert settings modal -->
+<div class="overlay" id="overlay-alerts">
+  <div class="modal">
+    <h2>Email alerts</h2>
+    <div class="form-row">
+      <label>Email address</label>
+      <input type="email" id="alert-email" placeholder="name@example.com" />
+      <div class="hint">We'll send alerts when a stock reaches target or is within +/-5% of target.</div>
+    </div>
+    <div class="form-row">
+      <label>Enable alerts</label>
+      <select id="alert-enabled">
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+    </div>
+    <div class="hint">Delivery uses FormSubmit from this browser session. Keep the page open for periodic checks.</div>
+    <div class="modal-btns">
+      <button class="btn" onclick="closeModals()">Cancel</button>
+      <button class="btn btn-accent" onclick="saveAlertSettings()">Save alerts</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // aa ANTHROPIC API KEY (for AI stock analysis + portfolio overview) aaaaaaaaaa
 // Get your key at: https://console.anthropic.com
@@ -824,6 +895,14 @@ const ANTHROPIC_API_KEY = '';
 
 const STORAGE_KEY = 'ptrak_holdings_v2';
 const META_KEY    = 'ptrak_meta_v2';
+const ALERT_SETTINGS_KEY = 'ptrak_alert_settings_v1';
+const ALERT_LOG_KEY = 'ptrak_alert_log_v1';
+const AUTO_REFRESH_MS = 15 * 60 * 1000;
+
+let alertSettings = { enabled: false, email: '' };
+let alertLog = {};
+let _autoRefreshTimer = null;
+let _refreshInFlight = false;
 
 // aa Admin state aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 let isAdmin = true; // all users have write access
@@ -982,18 +1061,26 @@ async function save() {
 
 async function load() {
   const fb = window._firebase;
+  loadAlertSettingsFromStorage();
+  loadAlertLogFromStorage();
 
   // Apply admin UI immediately so buttons are visible on load
   updateAdminUI();
   loadMF();
 
   if (fb?.isConfigured()) {
+    const remoteAlertCfg = await fb.loadAlertConfig();
+    if (remoteAlertCfg && remoteAlertCfg.email) {
+      alertSettings = { enabled: !!remoteAlertCfg.enabled, email: remoteAlertCfg.email };
+      persistAlertSettings();
+    }
     setStatus('Connecting to Firebasea');
     // Subscribe to real-time updates a fires whenever data changes
     fb.subscribe((data) => {
       // Avoid remote snapshot bounce-back immediately after local writes.
       if (Date.now() - _lastLocalMutationAt < 8000) return;
       holdings = data;
+      normalizeHoldingFields();
       applyNseSectorsToHoldings();
       renderAll();
       setStatus(data.length + ' holdings - live', 'var(--accent)');
@@ -1002,6 +1089,7 @@ async function load() {
     const data = await fb.load();
     if (data !== null) {
       holdings = data;
+      normalizeHoldingFields();
       applyNseSectorsToHoldings();
       if (!data.length) {
         setStatus('Connected - No holdings yet a click CSV import to upload your files.');
@@ -1013,6 +1101,7 @@ async function load() {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         holdings = JSON.parse(raw);
+        normalizeHoldingFields();
         applyNseSectorsToHoldings();
         setStatus('Showing cached data - Firebase temporarily unavailable.');
       } else {
@@ -1029,6 +1118,7 @@ async function load() {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         holdings = JSON.parse(raw);
+        normalizeHoldingFields();
         applyNseSectorsToHoldings();
         updateLastSaved();
         setStatus(holdings.length + ' holdings loaded.');
@@ -1043,13 +1133,21 @@ async function load() {
 
 function loadDefaults() {
   holdings = [
-    {symbol:'RELIANCE',name:'Reliance Industries',sector:'Energy',account:'Groww-SN',qty:10,cost:2450,ltp:2512,dayChg:0},
-    {symbol:'TCS',name:'Tata Consultancy Services',sector:'IT',account:'Groww-SN',qty:5,cost:3800,ltp:3920,dayChg:0},
-    {symbol:'HDFCBANK',name:'HDFC Bank',sector:'Banking',account:'HDFC',qty:20,cost:1540,ltp:1598,dayChg:0},
-    {symbol:'INFY',name:'Infosys',sector:'IT',account:'HDFC',qty:15,cost:1420,ltp:1375,dayChg:0},
-    {symbol:'ITC',name:'ITC Ltd',sector:'FMCG',account:'Groww-SN',qty:50,cost:420,ltp:445,dayChg:0},
-    {symbol:'DRREDDY',name:"Dr. Reddy's Laboratories",sector:'Pharma',account:'HDFC',qty:8,cost:5100,ltp:5340,dayChg:0},
+    {symbol:'RELIANCE',name:'Reliance Industries',sector:'Energy',account:'Groww-SN',qty:10,cost:2450,ltp:2512,dayChg:0,call:'Hold',targetPrice:null},
+    {symbol:'TCS',name:'Tata Consultancy Services',sector:'IT',account:'Groww-SN',qty:5,cost:3800,ltp:3920,dayChg:0,call:'Hold',targetPrice:null},
+    {symbol:'HDFCBANK',name:'HDFC Bank',sector:'Banking',account:'HDFC',qty:20,cost:1540,ltp:1598,dayChg:0,call:'Hold',targetPrice:null},
+    {symbol:'INFY',name:'Infosys',sector:'IT',account:'HDFC',qty:15,cost:1420,ltp:1375,dayChg:0,call:'Hold',targetPrice:null},
+    {symbol:'ITC',name:'ITC Ltd',sector:'FMCG',account:'Groww-SN',qty:50,cost:420,ltp:445,dayChg:0,call:'Hold',targetPrice:null},
+    {symbol:'DRREDDY',name:"Dr. Reddy's Laboratories",sector:'Pharma',account:'HDFC',qty:8,cost:5100,ltp:5340,dayChg:0,call:'Hold',targetPrice:null},
   ];
+}
+
+function normalizeHoldingFields() {
+  holdings = (holdings || []).map((h) => ({
+    ...h,
+    call: (h.call === 'Buy' || h.call === 'Sell' || h.call === 'Hold') ? h.call : 'Hold',
+    targetPrice: (h.targetPrice === null || h.targetPrice === undefined || h.targetPrice === '') ? null : Number(h.targetPrice),
+  }));
 }
 
 function showSavePill() {
@@ -1276,6 +1374,9 @@ function debugUnavailableSymbols() {
 }
 
 async function refreshPrices() {
+  if (_refreshInFlight) return;
+  _refreshInFlight = true;
+  try {
   Object.keys(_priceCache).forEach(k => delete _priceCache[k]);
   setStatus('Fetching NSE prices...');
   document.getElementById('price-badge').textContent = 'Fetching...';
@@ -1328,7 +1429,9 @@ async function refreshPrices() {
     const failMsg = fail ? ('  ' + fail + ' symbols unavailable') : '';
     const skipMsg = skipped ? ('  ' + skipped + ' symbols skipped') : '';
     const sectorMsg = recat ? ('  ' + recat + ' sectors synced to NSE') : '';
-    setStatus(ok + ' NSE prices updated' + failMsg + skipMsg + sectorMsg, 'var(--accent)');
+    const alertCount = await runTargetAlertChecks();
+    const alertMsg = alertCount ? ('  ' + alertCount + ' alerts sent') : '';
+    setStatus(ok + ' NSE prices updated' + failMsg + skipMsg + sectorMsg + alertMsg, 'var(--accent)');
     await save();
   } else {
     document.getElementById('price-badge').textContent = 'Prices: last saved';
@@ -1336,6 +1439,141 @@ async function refreshPrices() {
     setStatus('Price fetch failed - NSE is temporarily unreachable. Try again in a moment.', 'var(--muted)');
   }
   renderAll();
+  } finally {
+    _refreshInFlight = false;
+  }
+}
+
+function loadAlertSettingsFromStorage() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ALERT_SETTINGS_KEY) || '{}');
+    alertSettings.enabled = !!raw.enabled;
+    alertSettings.email = String(raw.email || '').trim();
+  } catch {
+    alertSettings = { enabled: false, email: '' };
+  }
+}
+
+function loadAlertLogFromStorage() {
+  try {
+    alertLog = JSON.parse(localStorage.getItem(ALERT_LOG_KEY) || '{}') || {};
+  } catch {
+    alertLog = {};
+  }
+}
+
+function persistAlertSettings() {
+  localStorage.setItem(ALERT_SETTINGS_KEY, JSON.stringify(alertSettings));
+}
+
+function persistAlertLog() {
+  localStorage.setItem(ALERT_LOG_KEY, JSON.stringify(alertLog));
+}
+
+function openModal(t) {
+  closeModals();
+  document.getElementById('overlay-' + t).classList.add('open');
+  if (t === 'alerts') {
+    document.getElementById('alert-email').value = alertSettings.email || '';
+    document.getElementById('alert-enabled').value = alertSettings.enabled ? 'yes' : 'no';
+  }
+}
+
+async function saveAlertSettings() {
+  const email = String(document.getElementById('alert-email').value || '').trim();
+  const enabled = document.getElementById('alert-enabled').value === 'yes';
+  if (enabled && !email) {
+    alert('Please enter an email address.');
+    return;
+  }
+  alertSettings = { enabled, email };
+  persistAlertSettings();
+  const fb = window._firebase;
+  if (fb?.isConfigured()) {
+    await fb.saveAlertConfig(alertSettings);
+  }
+  closeModals();
+  setStatus(enabled ? ('Email alerts enabled for ' + email) : 'Email alerts disabled', 'var(--accent)');
+}
+
+function getAlertStateKey(h) {
+  return [normalizeSymbol(h.symbol), h.account || 'NA', h.targetPrice || 0].join('|');
+}
+
+function getAlertType(h) {
+  const target = Number(h.targetPrice);
+  const ltp = Number(h.ltp);
+  if (!Number.isFinite(target) || target <= 0 || !Number.isFinite(ltp) || ltp <= 0) return null;
+  const diffPct = ((ltp - target) / target) * 100;
+  if (ltp >= target) return 'reached';
+  if (Math.abs(diffPct) <= 5) return 'near';
+  return null;
+}
+
+async function sendTargetEmail(h, type) {
+  const email = String(alertSettings.email || '').trim();
+  if (!email) return false;
+  const target = Number(h.targetPrice);
+  const ltp = Number(h.ltp);
+  const diffPct = ((ltp - target) / target) * 100;
+  const subject = type === 'reached'
+    ? `Target reached: ${h.symbol}`
+    : `Near target (+/-5%): ${h.symbol}`;
+  const bodyLines = [
+    `Stock: ${h.symbol} (${h.name || h.symbol})`,
+    `Account: ${h.account || '-'}`,
+    `Call: ${h.call || 'Hold'}`,
+    `LTP: ${ltp.toFixed(2)}`,
+    `Target: ${target.toFixed(2)}`,
+    `Distance: ${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}%`,
+    `Triggered at: ${new Date().toLocaleString('en-IN')}`,
+  ];
+  try {
+    const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(email)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        _subject: subject,
+        _captcha: 'false',
+        message: bodyLines.join('\n'),
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function runTargetAlertChecks() {
+  if (!alertSettings.enabled || !alertSettings.email) return 0;
+  let sent = 0;
+  for (const h of holdings) {
+    const type = getAlertType(h);
+    const key = getAlertStateKey(h);
+    const prev = alertLog[key] || null;
+    if (!type) {
+      if (prev) delete alertLog[key];
+      continue;
+    }
+    const now = Date.now();
+    const cooldownMs = 12 * 60 * 60 * 1000;
+    const recentlySent = prev && prev.type === type && (now - Number(prev.at || 0) < cooldownMs);
+    if (recentlySent) continue;
+    const ok = await sendTargetEmail(h, type);
+    if (ok) {
+      alertLog[key] = { type, at: now, lastPrice: h.ltp };
+      sent++;
+    }
+  }
+  persistAlertLog();
+  return sent;
+}
+
+function setupAutoRefresh() {
+  if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+  _autoRefreshTimer = setInterval(() => {
+    refreshPrices();
+  }, AUTO_REFRESH_MS);
 }
 
 // --- Render ---
@@ -1496,6 +1734,8 @@ function renderTable() {
       else if (sortState.col === 'cost')   { va = a.cost; vb = b.cost; }
       else if (sortState.col === 'ltp')    { va = a.ltp; vb = b.ltp; }
       else if (sortState.col === 'dayChg') { va = a.dayChg||0; vb = b.dayChg||0; }
+      else if (sortState.col === 'call')    { va = a.call||'Hold'; vb = b.call||'Hold'; }
+      else if (sortState.col === 'target')  { va = a.targetPrice||0; vb = b.targetPrice||0; }
       else if (sortState.col === 'pnl')      { va = (a.ltp-a.cost)*a.qty; vb = (b.ltp-b.cost)*b.qty; }
       else if (sortState.col === 'invested') { va = a.qty*a.cost; vb = b.qty*b.cost; }
       else if (sortState.col === 'value')    { va = a.qty*a.ltp;  vb = b.qty*b.ltp; }
@@ -1512,7 +1752,7 @@ function renderTable() {
 
   const tbody = document.getElementById('holdings-body');
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="13" class="empty-row">No holdings match your filters.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="15" class="empty-row">No holdings match your filters.</td></tr>';
     return;
   }
   tbody.innerHTML = list.map(h => {
@@ -1535,6 +1775,22 @@ function renderTable() {
       <td><span class="ltp-val">${fmt(h.ltp)}</span></td>
       <td style="font-weight:600;">${fmt(currVal)}</td>
       <td class="${dc >= 0 ? 'change-up' : 'change-down'}">${dc >= 0 ? '+' : ''}${dc.toFixed(2)}%</td>
+      <td>
+        <select class="filter-select" style="padding:3px 8px;font-size:12px;"
+          onclick="event.stopPropagation()"
+          onchange="event.stopPropagation();updateHoldingCall(${idx}, this.value)">
+          <option value="Hold" ${h.call === 'Hold' ? 'selected' : ''}>Hold</option>
+          <option value="Buy" ${h.call === 'Buy' ? 'selected' : ''}>Buy</option>
+          <option value="Sell" ${h.call === 'Sell' ? 'selected' : ''}>Sell</option>
+        </select>
+      </td>
+      <td>
+        <input type="number" class="search-box" style="max-width:110px;padding:5px 8px;"
+          value="${h.targetPrice ?? ''}" placeholder="-"
+          onclick="event.stopPropagation()"
+          onkeydown="event.stopPropagation();if(event.key==='Enter'){this.blur();}"
+          onblur="updateHoldingTarget(${idx}, this.value)" />
+      </td>
       <td class="${pnlT >= 0 ? 'pnl-up' : 'pnl-down'}">${pnlT >= 0 ? '+' : ''}${fmt(pnlT)}</td>
       <td${near52H}>${w52H}</td>
       <td${near52L}>${w52L}</td>
@@ -1544,6 +1800,21 @@ function renderTable() {
       </td>
     </tr>`;
   }).join('');
+}
+
+function updateHoldingCall(idx, value) {
+  if (!holdings[idx]) return;
+  holdings[idx].call = (value === 'Buy' || value === 'Sell' || value === 'Hold') ? value : 'Hold';
+  save();
+  renderTable();
+}
+
+function updateHoldingTarget(idx, value) {
+  if (!holdings[idx]) return;
+  const n = Number(value);
+  holdings[idx].targetPrice = (value === '' || !Number.isFinite(n) || n <= 0) ? null : n;
+  save();
+  renderTable();
 }
 
 function renderAllocations() {
@@ -1601,7 +1872,6 @@ function deleteHolding(i) {
   renderAll();
 }
 
-function openModal(t) { closeModals(); document.getElementById('overlay-' + t).classList.add('open'); }
 function closeModals() { document.querySelectorAll('.overlay').forEach(m => m.classList.remove('open')); }
 
 document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) closeModals(); }));
@@ -1615,6 +1885,9 @@ async function addHolding() {
   const account = document.getElementById('f-account').value;
   const qty = parseInt(document.getElementById('f-qty').value);
   const cost = parseFloat(document.getElementById('f-cost').value);
+  const call = document.getElementById('f-call').value || 'Hold';
+  const targetRaw = document.getElementById('f-target').value;
+  const targetPrice = targetRaw === '' ? null : Number(targetRaw);
   if (!sym || !qty || !cost) { alert('Symbol, quantity and buy price are required.'); return; }
   closeModals();
   setStatus('Fetching live price for ' + sym + '-');
@@ -1622,10 +1895,14 @@ async function addHolding() {
   const ltp = p?.ltp || cost;
   const dayChg = p?.prev ? ((ltp - p.prev) / p.prev * 100) : 0;
   const mappedSector = nseSectorForSymbol(sym);
-  holdings.push({ symbol: sym, name: name || sym, sector: mappedSector === 'Other' ? sector : mappedSector, account, qty, cost, ltp, dayChg });
+  holdings.push({
+    symbol: sym, name: name || sym, sector: mappedSector === 'Other' ? sector : mappedSector,
+    account, qty, cost, ltp, dayChg, call, targetPrice: Number.isFinite(targetPrice) && targetPrice > 0 ? targetPrice : null
+  });
   save();
   setStatus(p?.ltp ? 'Added ' + sym + ' - live price ' + fmt(ltp) : 'Added ' + sym + ' (price unavailable, using buy price)', p?.ltp ? 'var(--accent)' : undefined);
-  ['f-symbol', 'f-name', 'f-qty', 'f-cost'].forEach(id => document.getElementById(id).value = '');
+  ['f-symbol', 'f-name', 'f-qty', 'f-cost', 'f-target'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-call').value = 'Hold';
   renderAll();
 }
 
@@ -1793,7 +2070,7 @@ function parseRowsToHoldings(rows, account) {
     if (!symbol || isNaN(qty) || isNaN(cost) || qty <= 0) { skipped++; return; }
     if (cost === 0) cost = ltp;
 
-    holdings.push({ symbol, name: name || symbol, sector, account, qty, cost, ltp, dayChg: 0 });
+    holdings.push({ symbol, name: name || symbol, sector, account, qty, cost, ltp, dayChg: 0, call: 'Hold', targetPrice: null });
     added++;
   });
   return { added, skipped };
@@ -1835,8 +2112,8 @@ function importCSV() {
 }
 
 function exportCSV() {
-  const rows = [['Symbol','Name','Sector','Account','Qty','Avg Cost','LTP','P&L']];
-  holdings.forEach(h => rows.push([h.symbol, h.name, h.sector, h.account, h.qty, h.cost.toFixed(2), h.ltp.toFixed(2), ((h.ltp - h.cost) * h.qty).toFixed(2)]));
+  const rows = [['Symbol','Name','Sector','Account','Qty','Avg Cost','LTP','Call','Target Price','P&L']];
+  holdings.forEach(h => rows.push([h.symbol, h.name, h.sector, h.account, h.qty, h.cost.toFixed(2), h.ltp.toFixed(2), h.call || 'Hold', h.targetPrice ?? '', ((h.ltp - h.cost) * h.qty).toFixed(2)]));
   const csv = rows.map(r => r.join(',')).join('\n');
   const a = document.createElement('-');
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
@@ -2144,6 +2421,8 @@ function openEditModal(idx) {
   document.getElementById('edit-cost').value = h.cost.toFixed(2);
   document.getElementById('edit-sector-sel').value = h.sector;
   document.getElementById('edit-account-sel').value = h.account;
+  document.getElementById('edit-call-sel').value = h.call || 'Hold';
+  document.getElementById('edit-target').value = h.targetPrice ?? '';
   switchEditTab('sell', document.querySelector('.edit-tab'));
   openModal('edit');
 }
@@ -2205,6 +2484,11 @@ function confirmEdit() {
   holdings[editIdx].cost    = cost;
   holdings[editIdx].sector  = document.getElementById('edit-sector-sel').value;
   holdings[editIdx].account = document.getElementById('edit-account-sel').value;
+  holdings[editIdx].call    = document.getElementById('edit-call-sel').value || 'Hold';
+  {
+    const t = Number(document.getElementById('edit-target').value);
+    holdings[editIdx].targetPrice = Number.isFinite(t) && t > 0 ? t : null;
+  }
   closeModals();
   save();
   setStatus('Updated ' + holdings[editIdx].symbol, 'var(--accent)');
@@ -2759,6 +3043,7 @@ Be specific, reference actual stocks and numbers. Do not add disclaimers.`;
 function _appInit() {
   initFirebase(); // set up Firebase (compat SDK now loaded)
   load();         // load data and render
+  setupAutoRefresh();
 }
 
 if (document.readyState === 'loading') {
