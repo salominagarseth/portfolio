@@ -452,7 +452,7 @@ function initFirebase() {
           <option value="">All sectors</option>
           <option>Energy</option><option>IT</option><option>Banking</option><option>FMCG</option>
           <option>Pharma</option><option>Auto</option><option>Telecom</option><option>Metals</option>
-          <option>Materials</option><option>Consumer</option><option>Logistics</option><option>Other</option>
+          <option>Financial Services</option><option>Consumer</option><option>Other</option>
         </select>
         <select class="filter-select" id="tbl-pnl" onchange="renderTable()">
           <option value="">All P&L</option>
@@ -684,9 +684,7 @@ function initFirebase() {
         <select id="edit-sector-sel">
           <option>Energy</option><option>IT</option><option>Banking</option><option>FMCG</option>
           <option>Pharma</option><option>Auto</option><option>Telecom</option><option>Metals</option>
-          <option>Materials</option><option>Consumer</option><option>Logistics</option>
-          <option>Realty</option><option>Infrastructure</option><option>Defence</option>
-          <option>Chemicals</option><option>NBFC</option><option>Insurance</option><option>Other</option>
+          <option>Financial Services</option><option>Consumer</option><option>Other</option>
         </select>
       </div>
       <div class="form-row"><label>Account</label>
@@ -786,7 +784,8 @@ function initFirebase() {
     <div class="form-row"><label>Sector</label>
       <select id="f-sector">
         <option>Energy</option><option>IT</option><option>Banking</option><option>FMCG</option>
-        <option>Pharma</option><option>Auto</option><option>Telecom</option><option>Metals</option><option>Other</option>
+        <option>Pharma</option><option>Auto</option><option>Telecom</option><option>Metals</option>
+        <option>Financial Services</option><option>Consumer</option><option>Other</option>
       </select>
     </div>
     <div class="form-row"><label>Account</label>
@@ -983,16 +982,50 @@ const SECTOR_MAP = {
   MAPMYINDIA:'Software Products',
 };
 
+const TOP_SECTORS = [
+  'Banking',
+  'IT',
+  'Pharma',
+  'Energy',
+  'Auto',
+  'FMCG',
+  'Telecom',
+  'Metals',
+  'Financial Services',
+  'Consumer',
+];
+
+function normalizeSectorGroup(rawSector) {
+  const s = String(rawSector || '').trim().toLowerCase();
+  if (!s) return 'Other';
+  if (s.includes('bank')) return 'Banking';
+  if (s.includes('software') || s.includes('it ') || s === 'it' || s.includes('tech') || s.includes('computer')) return 'IT';
+  if (s.includes('pharma') || s.includes('drug') || s.includes('health')) return 'Pharma';
+  if (s.includes('oil') || s.includes('gas') || s.includes('energy') || s.includes('power') || s.includes('refiner') || s.includes('coal')) return 'Energy';
+  if (s.includes('auto') || s.includes('2/3 wheel') || s.includes('passenger car') || s.includes('vehicle') || s.includes('tyre')) return 'Auto';
+  if (s.includes('fmcg') || s.includes('packaged') || s.includes('food') || s.includes('consumer staples') || s.includes('paint')) return 'FMCG';
+  if (s.includes('telecom') || s.includes('cellular')) return 'Telecom';
+  if (s.includes('metal') || s.includes('steel') || s.includes('mining') || s.includes('iron')) return 'Metals';
+  if (s.includes('nbfc') || s.includes('financial') || s.includes('insurance') || s.includes('asset') || s.includes('capital') || s.includes('finserv')) return 'Financial Services';
+  if (s.includes('consumer') || s.includes('retail') || s.includes('jewellery') || s.includes('watches') || s.includes('apparel')) return 'Consumer';
+  return 'Other';
+}
+
 function nseSectorForSymbol(symbol) {
-  return SECTOR_MAP[String(symbol || '').toUpperCase()] || 'Other';
+  const raw = SECTOR_MAP[String(symbol || '').toUpperCase()] || 'Other';
+  return normalizeSectorGroup(raw);
 }
 
 function applyNseSectorsToHoldings() {
   let changed = 0;
   for (const h of holdings) {
     const mapped = nseSectorForSymbol(h.symbol);
-    if (mapped && mapped !== 'Other' && h.sector !== mapped) {
+    const groupedCurrent = normalizeSectorGroup(h.sector);
+    if (mapped && mapped !== 'Other' && groupedCurrent !== mapped) {
       h.sector = mapped;
+      changed++;
+    } else if (mapped === 'Other' && groupedCurrent !== h.sector) {
+      h.sector = groupedCurrent;
       changed++;
     }
   }
@@ -1001,7 +1034,7 @@ function applyNseSectorsToHoldings() {
 const COLORS_SEC = {
   Energy:'#fbbf24',IT:'#60a5fa',Banking:'#2dd4bf',FMCG:'#f472b6',
   Pharma:'#a78bfa',Auto:'#fb923c',Telecom:'#4ade80',Metals:'#94a3b8',
-  Other:'#6ee7b7',Consumer:'#f9a8d4',Materials:'#fdba74',Logistics:'#7dd3fc'
+  'Financial Services':'#22d3ee',Consumer:'#f9a8d4',Other:'#6ee7b7'
 };
 const COLORS_ACC = { 'Groww-SN':'#2dd4bf', 'Groww-MJ':'#a78bfa', 'Groww-DG':'#fb923c', 'Groww-SJ':'#fbbf24', 'HDFC':'#60a5fa' };
 
@@ -1145,6 +1178,7 @@ function loadDefaults() {
 function normalizeHoldingFields() {
   holdings = (holdings || []).map((h) => ({
     ...h,
+    sector: normalizeSectorGroup(h.sector),
     call: (h.call === 'Buy' || h.call === 'Sell' || h.call === 'Hold') ? h.call : 'Hold',
     targetPrice: (h.targetPrice === null || h.targetPrice === undefined || h.targetPrice === '') ? null : Number(h.targetPrice),
   }));
@@ -1407,7 +1441,7 @@ async function refreshPrices() {
       h.dayChg = p.dayChgPct ?? (p.prev ? ((p.ltp - p.prev) / p.prev * 100) : 0);
       if (p.w52High) h.w52High = p.w52High;
       if (p.w52Low) h.w52Low = p.w52Low;
-      if (p.industry && p.industry !== 'Other') h.sector = p.industry;
+      if (p.industry && p.industry !== 'Other') h.sector = normalizeSectorGroup(p.industry);
       ok++;
     } else {
       const base = normalizeSymbol(h.symbol);
@@ -1606,27 +1640,19 @@ function renderMetrics() {
     <div class="metric hdfc"><div class="metric-label">HDFC</div><div class="metric-value">${fmt(hv)}</div></div>`;
 }
 
-const ALL_SECTORS = [...new Set([
-  ...Object.values(SECTOR_MAP),
-  'Energy','IT','Banking','FMCG','Pharma','Auto','Telecom',
-  'Metals','Materials','Consumer','Logistics','Realty','Infrastructure','Defence',
-  'Chemicals','NBFC','Insurance','Media','Textiles','Other'
-])].sort((a, b) => a.localeCompare(b));
+const ALL_SECTORS = [...TOP_SECTORS, 'Other'];
 
 function sectorColor(sector) {
   const map = {
     Energy:'rgba(251,191,36,0.15)',IT:'rgba(96,165,250,0.15)',Banking:'rgba(45,212,191,0.15)',
     FMCG:'rgba(244,114,182,0.15)',Pharma:'rgba(167,139,250,0.15)',Auto:'rgba(251,146,60,0.15)',
     Telecom:'rgba(74,222,128,0.15)',Metals:'rgba(148,163,184,0.15)',Other:'rgba(110,231,183,0.15)',
-    Consumer:'rgba(249,168,212,0.15)',Materials:'rgba(253,186,116,0.15)',Logistics:'rgba(125,211,252,0.15)',
-    Realty:'rgba(251,191,36,0.12)',Infrastructure:'rgba(96,165,250,0.12)',Defence:'rgba(74,222,128,0.12)',
-    Chemicals:'rgba(167,139,250,0.12)',NBFC:'rgba(45,212,191,0.12)',Insurance:'rgba(244,114,182,0.12)',
+    Consumer:'rgba(249,168,212,0.15)','Financial Services':'rgba(34,211,238,0.15)',
   };
   const textMap = {
     Energy:'#fbbf24',IT:'#60a5fa',Banking:'#2dd4bf',FMCG:'#f472b6',Pharma:'#a78bfa',
     Auto:'#fb923c',Telecom:'#4ade80',Metals:'#94a3b8',Other:'#6ee7b7',Consumer:'#f9a8d4',
-    Materials:'#fdba74',Logistics:'#7dd3fc',Realty:'#fbbf24',Infrastructure:'#60a5fa',
-    Defence:'#4ade80',Chemicals:'#a78bfa',NBFC:'#2dd4bf',Insurance:'#f472b6',
+    'Financial Services':'#22d3ee',
   };
   return { bg: map[sector] || 'rgba(255,255,255,0.06)', color: textMap[sector] || '#6ee7b7' };
 }
@@ -1671,7 +1697,7 @@ function confirmSector(idx) {
   const inp = document.getElementById('sec-inp-' + idx);
   const newSector = (inp ? inp.value.trim() : sel?.value) || holdings[idx].sector;
   if (!newSector || newSector === '__custom__') return;
-  holdings[idx].sector = newSector;
+  holdings[idx].sector = normalizeSectorGroup(newSector);
   save();
   renderAll();
 }
@@ -1881,7 +1907,7 @@ async function addHolding() {
   if (!requireAdmin()) return;
   const sym = document.getElementById('f-symbol').value.toUpperCase().trim();
   const name = document.getElementById('f-name').value.trim();
-  const sector = document.getElementById('f-sector').value;
+  const sector = normalizeSectorGroup(document.getElementById('f-sector').value);
   const account = document.getElementById('f-account').value;
   const qty = parseInt(document.getElementById('f-qty').value);
   const cost = parseFloat(document.getElementById('f-cost').value);
@@ -1896,7 +1922,7 @@ async function addHolding() {
   const dayChg = p?.prev ? ((ltp - p.prev) / p.prev * 100) : 0;
   const mappedSector = nseSectorForSymbol(sym);
   holdings.push({
-    symbol: sym, name: name || sym, sector: mappedSector === 'Other' ? sector : mappedSector,
+    symbol: sym, name: name || sym, sector: normalizeSectorGroup(mappedSector === 'Other' ? sector : mappedSector),
     account, qty, cost, ltp, dayChg, call, targetPrice: Number.isFinite(targetPrice) && targetPrice > 0 ? targetPrice : null
   });
   save();
@@ -2070,7 +2096,7 @@ function parseRowsToHoldings(rows, account) {
     if (!symbol || isNaN(qty) || isNaN(cost) || qty <= 0) { skipped++; return; }
     if (cost === 0) cost = ltp;
 
-    holdings.push({ symbol, name: name || symbol, sector, account, qty, cost, ltp, dayChg: 0, call: 'Hold', targetPrice: null });
+    holdings.push({ symbol, name: name || symbol, sector: normalizeSectorGroup(sector), account, qty, cost, ltp, dayChg: 0, call: 'Hold', targetPrice: null });
     added++;
   });
   return { added, skipped };
@@ -2482,7 +2508,7 @@ function confirmEdit() {
   holdings[editIdx].name    = document.getElementById('edit-name').value.trim();
   holdings[editIdx].qty     = qty;
   holdings[editIdx].cost    = cost;
-  holdings[editIdx].sector  = document.getElementById('edit-sector-sel').value;
+  holdings[editIdx].sector  = normalizeSectorGroup(document.getElementById('edit-sector-sel').value);
   holdings[editIdx].account = document.getElementById('edit-account-sel').value;
   holdings[editIdx].call    = document.getElementById('edit-call-sel').value || 'Hold';
   {
